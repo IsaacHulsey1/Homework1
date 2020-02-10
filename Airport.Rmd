@@ -1,0 +1,256 @@
+# Question 1
+## Isaac Hulsey idh285
+
+
+```{r, include='FALSE'}
+setwd("C:/Users/Isaac Hulsey/Desktop/Rproject/Datamining")
+```
+
+
+```{r, include='FALSE'}
+library(tidyverse)
+```
+
+
+```{r, include='FALSE'}
+airport = read.csv("Airport.csv")
+na.omit(airport) -> airportnew
+```
+
+### I'm interested in whether or not there's an airport you don't want your flight from Austin to come from in regards to average delay time. So, first I created a simple scatterplot between airport of origin and delay time to see if any trends existed.
+
+```{r, echo=FALSE}
+ggplot(data = airportnew) + 
+  geom_point(mapping = aes(x = Origin, y = ArrDelay)) +
+  labs(y= "Arrival delay in minutes", x = "Airport code of originating ariport") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+### It appears that a few airports have longer average delay times than others. So, I calculated the average delay time in minutes for every airport of origin, and I created a bar graph to visualize average delay time in Austin from airport of origin in descending order.
+
+```{r, include='FALSE'}
+delay_summ = airportnew %>%
+  group_by(Origin)  %>% 
+  summarize(ArrDelay.mean = mean(ArrDelay))  # calculate a mean for each model
+```
+
+
+```{r, echo=FALSE}
+ggplot(delay_summ, aes(x=reorder(Origin, ArrDelay.mean), y=ArrDelay.mean)) +
+  labs(y= "Average delay time in minutes", x = "Airport code") +
+  geom_bar(stat='identity') + 
+  coord_flip()
+```  
+
+### It looks like you don't want your flight to originate from Knoxville (TYS), Oklahoma City (OKC), or Philidelphia (PHL) as those have an average delay time between 80 and 95 minutes when flying to the Austin airport.
+
+# Question 2
+
+## For Subclass 350
+
+```{r, include='FALSE'}
+library(mosaic)
+library(FNN)
+sclass = read.csv('sclass.csv')
+# The variables involved
+summary(sclass)
+# Focus on 2 trim levels: 350 and 65 AMG
+sclass550 = subset(sclass, trim == '350')
+dim(sclass550)
+na.omit(sclass550) -> sclass550
+sclass65AMG = subset(sclass, trim == '65 AMG')
+summary(sclass65AMG)
+```
+### For starters let's take a look at what the data looks like for the 350 subclass.
+
+
+```{r, echo= FALSE}
+#Look at price vs mileage for each trim level
+plot(price ~ mileage, data = sclass550)
+```
+
+```{r, include='FALSE'}
+N = nrow(sclass550)
+N_train = floor(0.8*N)
+N_test = N - N_train
+# Train/test split
+# randomly sample a set of data points to include in the training set
+train_ind = sample.int(N, N_train, replace=FALSE)
+# Define the training and testing set
+D_train = sclass550[train_ind,]
+D_test = sclass550[-train_ind,]
+# Now separate the training and testing sets into features (X) and outcome (y)
+X_train = select(D_train, mileage)
+y_train = select(D_train, price)
+X_test = select(D_test, mileage)
+y_test = select(D_test, price)
+# define a helper function for calculating RMSE
+rmse = function(y, ypred) {
+  sqrt(mean(data.matrix((y-ypred)^2)))
+}
+N_train = 200
+train_ind = sort(sample.int(N, N_train, replace=FALSE))
+D_train = sclass550[train_ind,]
+D_train = arrange(D_train, mileage)
+y_train = D_train$price
+X_train = data.frame(mileage=jitter(D_train$price))
+
+rmse1 <- vector()
+horizon = 200
+for (x in 1:horizon) {
+knn_model = knn250 = knn.reg(train = X_train, test = X_test, y = y_train, k=x)
+ypred_knn250 = knn250$pred
+rmse1 <- c(rmse1,rmse(y_test, ypred_knn250))
+}
+
+rmse1
+
+k <- vector()
+for (x in 1:horizon) {
+k <- c(k,x)
+}
+
+#creating a dataframe for the graph of kmeans
+kgraph1 <- data.frame(k,rmse1)
+#creating a graph of the kmeans on the test set
+kgraph = ggplot(data = kgraph1) + 
+  geom_point(mapping = aes(x = k, y = rmse1), color='lightgrey') + 
+  theme_bw(base_size=18) + 
+  ylim(5000, 125000) + xlim(1,horizon)
+```
+
+```{r, echo=FALSE}
+kgraph + geom_path(mapping = aes(x=k, y=rmse1), color='red', size=1.5) +
+  labs(y= "Out of sample RMSE", x = "K")
+```
+
+
+
+```{r, include='FALSE'}
+ggplot(data = sclass550 ) + 
+  geom_point(mapping = aes(x = mileage, y = price), color='darkgrey') + 
+  ylim(0, 200000)
+```
+
+### What we see in this graph shows that as k increases, rmse of the out of sample prediction decreases. What I suspect is going on is that most of the data in this set for the 550 subclass is for cars with less than 50,000 miles. Also, the data in the range of 0 to 50,000 miles doesn't have an obvious trend in the price range (excluding the new cars have a higher price). So, the best prediction in kmeans for the price of the car given how many miles driven it has in the 550 subclass might end up being the sample average. 
+
+# Now for Subclass 65AMG
+
+### Starting with the plot of the data
+```{r, echo=FALSE}
+plot(price ~ mileage, data = sclass65AMG)
+```
+
+
+### Contrast this scatterplot of mileage against price for 65AMG with the 550 with the corresponding scatterplot for the 550 subclass. There is a trend that we can see. The higher the mileage, the loweer the the price tends to be. There isn't a "clump" of data in this data.
+
+```{r, include='FALSE'}
+N = nrow(sclass65AMG)
+N_train = floor(0.8*N)
+N_test = N - N_train
+# Train/test split
+# randomly sample a set of data points to include in the training set
+train_ind = sample.int(N, N_train, replace=FALSE)
+# Define the training and testing set
+D_train = sclass65AMG[train_ind,]
+D_test = sclass65AMG[-train_ind,]
+# Now separate the training and testing sets into features (X) and outcome (y)
+X_train = select(D_train, mileage)
+y_train = select(D_train, price)
+X_test = select(D_test, mileage)
+y_test = select(D_test, price)
+# define a helper function for calculating RMSE
+rmse = function(y, ypred) {
+  sqrt(mean(data.matrix((y-ypred)^2)))
+}
+N_train = 220
+train_ind = sort(sample.int(N, N_train, replace=FALSE))
+D_train = sclass65AMG[train_ind,]
+D_train = arrange(D_train, mileage)
+y_train = D_train$price
+X_train = data.frame(mileage=jitter(D_train$price))
+
+rmse1 <- vector()
+horizon = 220
+for (x in 1:horizon) {
+knn_model = knn250 = knn.reg(train = X_train, test = X_test, y = y_train, k=x)
+ypred_knn250 = knn250$pred
+rmse1 <- c(rmse1,rmse(y_test, ypred_knn250))
+}
+
+
+k <- vector()
+for (x in 1:horizon) {
+k <- c(k,x)
+}
+
+#creating a dataframe for the graph of kmeans
+kgraph2 <- data.frame(k,rmse1)
+```
+
+```{r, echo=FALSE}
+#creating a graph of the kmeans on the test set
+kgraph = ggplot(data = kgraph2) + 
+  geom_point(mapping = aes(x = k, y = rmse1), color='lightgrey') + 
+  theme_bw(base_size=18) + 
+  ylim(40000, 150000) + xlim(0,horizon)
+kgraph + geom_path(mapping = aes(x=k, y=rmse1), color='red', size=1.5) +
+  labs(y= "Out of sample RMSE", x = "K")
+```
+
+### Just as expected, there does seem to be a cutoff for optimal value of k for the out of sample RMSE prediction for the 65AMG model. Let's graph this again, but this time "zoomed in" on values of k between 150-220
+
+```{r, include='FALSE'}
+N = nrow(sclass65AMG)
+N_train = floor(0.8*N)
+N_test = N - N_train
+# Train/test split
+# randomly sample a set of data points to include in the training set
+train_ind = sample.int(N, N_train, replace=FALSE)
+# Define the training and testing set
+D_train = sclass65AMG[train_ind,]
+D_test = sclass65AMG[-train_ind,]
+# Now separate the training and testing sets into features (X) and outcome (y)
+X_train = select(D_train, mileage)
+y_train = select(D_train, price)
+X_test = select(D_test, mileage)
+y_test = select(D_test, price)
+# define a helper function for calculating RMSE
+rmse = function(y, ypred) {
+  sqrt(mean(data.matrix((y-ypred)^2)))
+}
+N_train = 220
+train_ind = sort(sample.int(N, N_train, replace=FALSE))
+D_train = sclass65AMG[train_ind,]
+D_train = arrange(D_train, mileage)
+y_train = D_train$price
+X_train = data.frame(mileage=jitter(D_train$price))
+
+rmse1 <- vector()
+horizon = 220
+for (x in 180:horizon) {
+knn_model = knn250 = knn.reg(train = X_train, test = X_test, y = y_train, k=x)
+ypred_knn250 = knn250$pred
+rmse1 <- c(rmse1,rmse(y_test, ypred_knn250))
+}
+
+
+k <- vector()
+for (x in 180:horizon) {
+k <- c(k,x)
+}
+
+#creating a dataframe for the graph of kmeans
+kgraph2 <- data.frame(k,rmse1)
+```
+
+```{r, echo=FALSE}
+#creating a graph of the kmeans on the test set
+kgraph = ggplot(data = kgraph2) + 
+  geom_point(mapping = aes(x = k, y = rmse1), color='lightgrey') + 
+  theme_bw(base_size=18)
+kgraph + geom_path(mapping = aes(x=k, y=rmse1), color='red', size=1.5) +
+  labs(y= "Out of sample RMSE", x = "K")
+```
+
+### The optimal K tends to be somewhere between 200-220 for the 65AMG Subclass.It just depends on what data ends up being in the test set.
