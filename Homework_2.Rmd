@@ -1,0 +1,602 @@
+---
+title: "Homework 2"
+author: "Matthew Borelli & Isaac Hulsey"
+date: "3/2/2020"
+output: md_document
+---
+
+# Question 1
+
+```{r, include='FALSE'}
+library(tidyverse)
+library(mosaic)
+library(FNN)
+data(SaratogaHouses)
+```
+
+```{r, include='FALSE'}
+rmse = function(y, yhat) {
+  sqrt( mean( (y - yhat)^2 ) )
+}
+```
+
+```{r, include='FALSE'}
+rmsebase <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + age + livingArea + pctCollege + bedrooms + 
+		fireplaces + bathrooms + rooms + heating + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+}
+```
+
+## On average, the current model for predicting housing price is off by $`r format(mean(rmsebase), scientific=FALSE)`. This model is in desperate need of improvement.
+
+```{r, include='FALSE'}
+rmse = function(y, yhat) {
+  sqrt( mean( (y - yhat)^2 ) )
+}
+```
+
+## The first thing that comes to mind when looking at the current predictive model is to drop some of the variables. If highly correlatead values are in the regression, it will mess up the predictability of the model. 
+
+```{r, include='FALSE'}
+numeric <- vector()
+rmsebase <- vector()
+rmsecompetitor <- vector()
+improvement <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + age + livingArea + pctCollege + bedrooms + 
+		fireplaces + bathrooms + rooms + heating + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+
+lm_competitor2 = lm(price ~ lotSize + livingArea + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_competitor2 = predict(lm_competitor2, saratoga_test)
+rmsecompetitor <- c(rmsecompetitor,rmse(saratoga_test$price, yhat_competitor2))
+improvement <- c(improvement,((mean(rmsebase) - mean(rmsecompetitor))/mean(rmsebase))*100)
+numeric <- c(numeric,mean(rmsebase)-mean(rmsecompetitor))
+}
+```
+
+```{r, include='FALSE'}
+#Creating a  99% confidence interval
+leftbound = mean(improvement) - 2.58*sd(improvement)/sqrt(horizon)
+rightbound = mean(improvement) + 2.58*sd(improvement)/sqrt(horizon)
+leftbound
+rightbound
+```
+
+## By dropping age and fireplaces, we get a `r format(round(leftbound, digits=2), scientific=FALSE)`% to `r format(round(rightbound, digits=2), scientific=FALSE)`% increase in predictability power, or a prediction approximately $`r format(round(mean(numeric), digits=2), scientific=FALSE)` closer to the actual price on average, but we can do much better than this.   
+
+# Graphical Analysis
+
+## The next thing we want to do is look at trends in the data and see what improvements can be made by adding some variables to the model. 
+
+
+## First, we will look at how price of a house changes over the age of a house in years.
+
+```{r, include='FALSE'}
+priceage =ggplot(data = SaratogaHouses) + 
+  geom_point(mapping = aes(x = age, y = price)) +
+  labs(y= "Price", x = "Age")
+require(scales)
+```
+
+```{r, echo=FALSE}
+priceage + scale_y_continuous(labels = comma) + aes(x = age, y = price) + geom_smooth(method='lm') + labs(y= "Price", x = "Age")
+```
+
+
+
+
+## The concentration of the data for houses younger than 25, and the higher value for houses before 25 years seems to be creating a downwards bias in the Age variable. I am going to graph this again except censoring houses that are less than 25 years old.
+
+```{r, include='FALSE'}
+priceage =ggplot(data = SaratogaHouses) + 
+  geom_point(mapping = aes(x = age, y = price)) +
+  labs(y= "Price", x = "Age")
+require(scales)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+priceage + scale_y_continuous(labels = comma) + aes(x = age, y = price) + geom_smooth(method='lm') + labs(y= "Price", x = "Age") +xlim(25,250)
+```
+
+```{r, include='FALSE'}
+#Rmarkdown for some reason merges the text below into the graph without this chunk ignore it.
+```
+
+## It looks like there is  a downward trend for Age right before a house being 25 years old. Kind of like a new house premium that dies off over time and later has no effect on housing prices.
+
+```{r, include='FALSE'}
+SaratogaHouses$new <- ifelse(SaratogaHouses$age < 25, 1, 0)
+
+newbox <- ggplot(SaratogaHouses, aes(x=new, y=price, group=new)) +
+  geom_boxplot() +
+  labs(y="Price", x = "New")
+require(scales)
+```
+```{r, echo=FALSE}
+newbox + scale_y_continuous(labels = comma)
+```
+
+## On average, houses that are 25 year of age or younger are worth roughly $25,000 more than houses that are older.
+
+
+## Oddly enough, new houses and a new construction aren not identical in the data, so we need to further transform the data.
+
+```{r, include='FALSE'}
+SaratogaHouses$justbuilt <- ifelse(SaratogaHouses$newConstruction == "Yes", 1, 0)
+```
+
+```{r, include='FALSE'}
+SaratogaHouses = mutate(SaratogaHouses, brandnew = justbuilt*new)
+```
+
+```{r, include='FALSE'}
+brandnewbox <- ggplot(SaratogaHouses, aes(x=brandnew, y=price, group=brandnew)) +
+  geom_boxplot() +
+  labs(y="Price", x = "Brand New")
+require(scales)
+```
+
+```{r, echo=FALSE}
+brandnewbox + scale_y_continuous(labels = comma)
+```
+
+## Brand New houses are denoted by 1 and not brand new houses are denoted by 0. The mean of brand new houses is higher by around $100,000 than non-brandnew houses. 
+
+
+## Now we will look at landvalue on price
+
+```{r, include='FALSE'}
+landValueScatter =ggplot(data = SaratogaHouses) + 
+  geom_point(mapping = aes(x = landValue, y = price)) +
+  labs(y= "Price", x = "Land Value")
+require(scales)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+landValueScatter + scale_y_continuous(labels = comma) + xlim(0,150000) + aes(x = landValue, y = price) + geom_smooth(method='lm') + labs(y= "Price", x = "Land Value")
+```
+
+## There seems to be an upward relationship between land value and price. This is not being captured in the current predictive model.
+
+## We generally assume that waterfront properties have a positive effect on housing price, and that effect is not accounted for in the current model. We will now take a look at a boxplot and see if there is anything evidence behind waterfront adding value to a price of a house.
+
+```{r, include='FALSE'}
+waterbox <- ggplot(SaratogaHouses, aes(x=waterfront, y=price, group=waterfront)) +
+  geom_boxplot() +
+  labs(y="Price", x = "Waterfront")
+require(scales)
+```
+```{r, echo=FALSE}
+waterbox + scale_y_continuous(labels = comma)
+```
+
+## There is incredibly strong evidence that on average a waterfront property will have a higher price than a non-waterfront property. We will include this in our model.
+
+## One final thing that I am interested in looking at is the effect of miscellaneous rooms in house prices. So, I will generate a box plot to look at the possible relationship of an additional miscellaneous room on price.
+
+```{r, include='FALSE'}
+SaratogaHouses = mutate(SaratogaHouses, miscrooms = rooms - (bedrooms+bathrooms))
+
+miscbox <- ggplot(SaratogaHouses, aes(x=miscrooms, y=price, group=miscrooms)) +
+  geom_boxplot() +
+  labs(y="Price", x = "Miscellaneous Rooms")
+require(scales)
+```
+```{r, echo=FALSE, warning=FALSE}
+miscbox + scale_y_continuous(labels = comma) +xlim(-.3 ,7)
+```
+
+## There seems to be an upward trend in the presence of miscellaneous rooms and price. We will consider adding it to our model.
+
+
+# Model Testing
+
+## Now time to test some of these features out. First, we will add waterfront and land value to the new regression model we createad by dropping age and fireplaces as those were the most significant variables and see what sort of jump we see in power of prediction. 
+
+```{r, include='FALSE'}
+numeric <- vector()
+rmsebase <- vector()
+rmsecompetitor <- vector()
+improvement <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + livingArea + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+
+lm_competitor2 = lm(price ~ lotSize + livingArea + landValue + waterfront + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_competitor2 = predict(lm_competitor2, saratoga_test)
+rmsecompetitor <- c(rmsecompetitor,rmse(saratoga_test$price, yhat_competitor2))
+improvement <- c(improvement,((mean(rmsebase) - mean(rmsecompetitor))/mean(rmsebase))*100)
+numeric <- c(numeric,mean(rmsebase)-mean(rmsecompetitor))
+}
+
+leftbound = mean(improvement) - 2.58*sd(improvement)/sqrt(horizon)
+rightbound = mean(improvement) + 2.58*sd(improvement)/sqrt(horizon)
+```
+## We see a `r format(round(leftbound, digits=2), scientific=FALSE)`% to `r format(round(rightbound, digits=2), scientific=FALSE)`% increase in improvement by adding these two variables from the improved model. This corresponds to roughly a `r format(round(mean(numeric), digits=2), scientific=FALSE)`$ more accurate guess in the prediction on average. 
+
+
+## Using the model just generated as the base model, we will add the variable created for houses 25 years and younger and the variable created for newly constructed houses that were less than a year old at the time of pricing.
+
+
+```{r, include='FALSE'}
+numeric <- vector()
+rmsebase <- vector()
+rmsecompetitor <- vector()
+improvement <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + livingArea + landValue + waterfront + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+
+lm_competitor2 = lm(price ~ lotSize + new + brandnew + livingArea + landValue + waterfront + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_competitor2 = predict(lm_competitor2, saratoga_test)
+rmsecompetitor <- c(rmsecompetitor,rmse(saratoga_test$price, yhat_competitor2))
+improvement <- c(improvement,((mean(rmsebase) - mean(rmsecompetitor))/mean(rmsebase))*100)
+numeric <- c(numeric,mean(rmsebase)-mean(rmsecompetitor))
+}
+
+leftbound = mean(improvement) - 2.58*sd(improvement)/sqrt(horizon)
+rightbound = mean(improvement) + 2.58*sd(improvement)/sqrt(horizon)
+```
+
+## Adding those variables to measure the premium buyers pay for a newer house, we get a `r format(round(leftbound, digits=2), scientific=FALSE)`% to `r format(round(rightbound, digits=2), scientific=FALSE)`% increase in accuracy which corresponds to on average being $`r format(round(mean(numeric), digits=2), scientific=FALSE)` closer to the actual price.
+
+## For the final linear model, I will compare adding miscellaneous rooms to the model and a few interactions and compare it to the new base model.
+
+```{r, include='FALSE'}
+numeric <- vector()
+rmsebase <- vector()
+rmsecompetitor <- vector()
+improvement <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + new + brandnew + livingArea + landValue + waterfront + pctCollege + bathrooms + bedrooms + rooms + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+
+lm_competitor2 = lm(price ~  landValue + lotSize*age +centralAir + waterfront + lotSize + miscrooms+ bedrooms + bathrooms + pctCollege + livingArea + lotSize + brandnew + fuel +new*livingArea +livingArea*waterfront +pctCollege*landValue, data=saratoga_train)
+yhat_competitor2 = predict(lm_competitor2, saratoga_test)
+rmsecompetitor <- c(rmsecompetitor,rmse(saratoga_test$price, yhat_competitor2))
+improvement <- c(improvement,((mean(rmsebase) - mean(rmsecompetitor))/mean(rmsebase))*100)
+numeric <- c(numeric,mean(rmsebase)-mean(rmsecompetitor))
+}
+leftbound = mean(improvement) - 2.58*sd(improvement)/sqrt(horizon)
+rightbound = mean(improvement) + 2.58*sd(improvement)/sqrt(horizon)
+```
+
+## Adding miscellaneous rooms to the model and a few interactions, we get a `r format(round(leftbound, digits=2), scientific=FALSE)`% to `r format(round(rightbound, digits=2), scientific=FALSE)`% increase in accuracy which corresponds to on average being $`r format(round(mean(numeric), digits=2), scientific=FALSE)` closer to the actual price.
+
+```{r, include='FALSE'}
+numeric <- vector()
+rmsebase <- vector()
+rmsecompetitor <- vector()
+improvement <- vector()
+
+horizon = 500
+for (x in 1:horizon) {
+
+
+n = nrow(SaratogaHouses)
+n_train = round(0.8*n)  # round to nearest integer
+n_test = n - n_train
+train_cases = sample.int(n, n_train, replace=FALSE)
+test_cases = setdiff(1:n, train_cases)
+saratoga_train = SaratogaHouses[train_cases,]
+saratoga_test = SaratogaHouses[test_cases,]
+
+lm_base = lm(price ~ lotSize + age + livingArea + pctCollege + bedrooms + 
+		fireplaces + bathrooms + rooms + heating + fuel + centralAir, data=saratoga_train)
+yhat_base = predict(lm_base, saratoga_test)
+rmsebase <- c(rmsebase,rmse(saratoga_test$price, yhat_base))
+
+lm_competitor2 = lm(price ~  landValue + lotSize*age +centralAir + waterfront + lotSize + miscrooms+ bedrooms + bathrooms + pctCollege + livingArea + new + lotSize + brandnew + fuel +new*livingArea +livingArea*waterfront +pctCollege*landValue, data=saratoga_train)
+yhat_competitor2 = predict(lm_competitor2, saratoga_test)
+rmsecompetitor <- c(rmsecompetitor,rmse(saratoga_test$price, yhat_competitor2))
+improvement <- c(improvement,((mean(rmsebase) - mean(rmsecompetitor))/mean(rmsebase))*100)
+numeric <- c(numeric,mean(rmsebase)-mean(rmsecompetitor))
+}
+leftbound = mean(improvement) - 2.58*sd(improvement)/sqrt(horizon)
+rightbound = mean(improvement) + 2.58*sd(improvement)/sqrt(horizon)
+```
+
+## Looking at our final model and the original base model, we get a `r format(round(leftbound, digits=2), scientific=FALSE)`% to `r format(round(rightbound, digits=2), scientific=FALSE)`% increase in accuracy which corresponds to on average being $`r format(round(mean(numeric), digits=2), scientific=FALSE)` closer to the actual price.
+
+
+```{r, include='FALSE'}
+SaratogaHouses$waterfront <- ifelse(SaratogaHouses$waterfront == "Yes", 1, 0)
+SaratogaHouses$centralAir <- ifelse(SaratogaHouses$centralAir == "Yes", 1, 0)
+
+SaratogaHouses$slandvalue <- scale(SaratogaHouses$landValue)
+SaratogaHouses$slotSize <- scale(SaratogaHouses$lotSize)
+SaratogaHouses$swaterfront <- scale(SaratogaHouses$waterfront)
+SaratogaHouses$smiscrooms <- scale(SaratogaHouses$miscrooms)
+SaratogaHouses$sbedrooms <- scale(SaratogaHouses$bedrooms)
+SaratogaHouses$sbathrooms <- scale(SaratogaHouses$bathrooms)
+SaratogaHouses$spctCollege <- scale(SaratogaHouses$pctCollege)
+SaratogaHouses$snew <- scale(SaratogaHouses$new)
+SaratogaHouses$slivingArea <- scale(SaratogaHouses$livingArea)
+SaratogaHouses$sbrandnew <- scale(SaratogaHouses$brandnew)
+SaratogaHouses$sprice <- scale(SaratogaHouses$price)
+SaratogaHouses$scentralAir <- scale(SaratogaHouses$centralAir)
+
+
+scaled <- subset(SaratogaHouses, select=c("slandvalue", "slotSize", "swaterfront","smiscrooms","sbedrooms","sbathrooms","spctCollege","snew","slivingArea","sbrandnew","price"))
+```
+
+
+## Out of curiosity, we will see if we can make a nonparametric model that is better at predicting prices than the best model we generated above.
+```{r, include='FALSE'}
+X = dplyr::select(scaled, -price)
+y = scaled$price
+n = length(y)
+n_train = round(0.8*n)
+n_test = n - n_train
+train_ind = sample.int(n, n_train)
+X_train = X[train_ind,]
+X_test = X[-train_ind,]
+y_train = y[train_ind]
+y_test = y[-train_ind]
+
+rmse1 <- vector()
+horizon = 25
+for (x in 2:horizon) {
+  knn_model = knnmod = knn.reg(train = X_train, test = X_test, y = y_train, k=x)
+ypred_knnmod = knnmod$pred
+rmse1 <- c(rmse1,rmse(y_test, ypred_knnmod))
+}
+
+k <- vector()
+for (x in 2:horizon) {
+k <- c(k,x)
+}
+
+kgraph2 <- data.frame(k,rmse1)
+```
+
+```{r, echo=FALSE}
+#creating a graph of the kmeans on the test set
+kgraph = ggplot(data = kgraph2) + 
+  geom_point(mapping = aes(x = k, y = rmse1), color='lightgrey') + 
+  theme_bw(base_size=18)
+kgraph + geom_path(mapping = aes(x=k, y=rmse1), color='red', size=1.5) +
+  labs(y= "Out of sample RMSE", x = "K")
+```
+
+## The above graph shows the relationship between k which is what we use to fine tune this nonparametric model and RMSE which in this case is how far off on average the model is at predicting the house price in dollars. After running lots of these regressions, I found that on average k=10 is the best k for minimizing RMSE.
+
+```{r, include='FALSE'}
+
+rmse1 <- vector()
+rmse2 <- vector()
+rmse3 <- vector()
+rmse4 <- vector()
+rmse5 <- vector()
+rmse6 <- vector()
+rmse7 <- vector()
+rmse8 <- vector()
+rmse9 <- vector()
+rmse10 <- vector()
+rmse11 <- vector()
+rmse12 <- vector()
+rmse13 <- vector()
+rmse14 <- vector()
+rmse15 <- vector()
+rmse16 <- vector()
+rmse17 <- vector()
+rmse18 <- vector()
+rmse19 <- vector()
+
+horizon = 100
+for (x in 2:horizon) {
+  
+X = dplyr::select(scaled, -price)
+y = scaled$price
+n = length(y)
+n_train = round(0.8*n)
+n_test = n - n_train
+train_ind = sample.int(n, n_train)
+X_train = X[train_ind,]
+X_test = X[-train_ind,]
+y_train = y[train_ind]
+y_test = y[-train_ind]
+
+
+knn_model = knnmod1 = knn.reg(train = X_train, test = X_test, y = y_train, k=2)
+ypred_knnmod = knnmod1$pred
+rmse1 <- c(rmse1,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod2 = knn.reg(train = X_train, test = X_test, y = y_train, k=3)
+ypred_knnmod = knnmod2$pred
+rmse2 <- c(rmse2,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod3 = knn.reg(train = X_train, test = X_test, y = y_train, k=4)
+ypred_knnmod = knnmod3$pred
+rmse3 <- c(rmse3,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod4 = knn.reg(train = X_train, test = X_test, y = y_train, k=5)
+ypred_knnmod = knnmod4$pred
+rmse4 <- c(rmse4,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod5 = knn.reg(train = X_train, test = X_test, y = y_train, k=6)
+ypred_knnmod = knnmod5$pred
+rmse5 <- c(rmse5,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod6 = knn.reg(train = X_train, test = X_test, y = y_train, k=7)
+ypred_knnmod = knnmod6$pred
+rmse6 <- c(rmse6,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod7 = knn.reg(train = X_train, test = X_test, y = y_train, k=8)
+ypred_knnmod = knnmod7$pred
+rmse7 <- c(rmse7,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod8 = knn.reg(train = X_train, test = X_test, y = y_train, k=9)
+ypred_knnmod = knnmod8$pred
+rmse8 <- c(rmse8,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod9 = knn.reg(train = X_train, test = X_test, y = y_train, k=10)
+ypred_knnmod = knnmod9$pred
+rmse9 <- c(rmse9,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod10 = knn.reg(train = X_train, test = X_test, y = y_train, k=11)
+ypred_knnmod = knnmod10$pred
+rmse10 <- c(rmse10,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod11 = knn.reg(train = X_train, test = X_test, y = y_train, k=12)
+ypred_knnmod = knnmod11$pred
+rmse11 <- c(rmse1,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod12 = knn.reg(train = X_train, test = X_test, y = y_train, k=13)
+ypred_knnmod = knnmod12$pred
+rmse12 <- c(rmse12,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod13 = knn.reg(train = X_train, test = X_test, y = y_train, k=14)
+ypred_knnmod = knnmod13$pred
+rmse13 <- c(rmse13,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod14 = knn.reg(train = X_train, test = X_test, y = y_train, k=15)
+ypred_knnmod = knnmod14$pred
+rmse14 <- c(rmse14,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod15 = knn.reg(train = X_train, test = X_test, y = y_train, k=16)
+ypred_knnmod = knnmod15$pred
+rmse15 <- c(rmse15,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod16 = knn.reg(train = X_train, test = X_test, y = y_train, k=17)
+ypred_knnmod = knnmod16$pred
+rmse16 <- c(rmse16,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod17 = knn.reg(train = X_train, test = X_test, y = y_train, k=18)
+ypred_knnmod = knnmod17$pred
+rmse17 <- c(rmse17,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod18 = knn.reg(train = X_train, test = X_test, y = y_train, k=19)
+ypred_knnmod = knnmod18$pred
+rmse18 <- c(rmse18,rmse(y_test, ypred_knnmod))
+
+knn_model = knnmod19 = knn.reg(train = X_train, test = X_test, y = y_train, k=20)
+ypred_knnmod = knnmod19$pred
+rmse19 <- c(rmse19,rmse(y_test, ypred_knnmod))
+}
+
+mean(rmse1) 
+mean(rmse2) 
+mean(rmse3) 
+mean(rmse4) 
+mean(rmse5) 
+mean(rmse6) 
+mean(rmse7) 
+mean(rmse8) 
+mean(rmse9) 
+mean(rmse10) 
+mean(rmse11) 
+mean(rmse12) 
+mean(rmse13) 
+mean(rmse14) 
+mean(rmse15) 
+mean(rmse16) 
+mean(rmse17) 
+mean(rmse18) 
+mean(rmse19) 
+#running the mean on each rmse, we find that k=10 on average preforms the best
+```
+
+
+```{r, include='FALSE'}
+
+rmse1 <- vector()
+horizon = 500
+for (x in 2:horizon) {
+  
+X = dplyr::select(scaled, -price)
+y = scaled$price
+n = length(y)
+n_train = round(0.8*n)
+n_test = n - n_train
+train_ind = sample.int(n, n_train)
+X_train = X[train_ind,]
+X_test = X[-train_ind,]
+y_train = y[train_ind]
+y_test = y[-train_ind]
+knn_model = knnmod4 = knn.reg(train = X_train, test = X_test, y = y_train, k=10)
+ypred_knnmod = knnmod4$pred
+rmse4 <- c(rmse4,rmse(y_test, ypred_knnmod))
+}
+
+leftboundl = mean(rmsecompetitor) - 2.58*sd(rmsecompetitor)/sqrt(horizon)
+rightboundl = mean(rmsecompetitor) + 2.58*sd(rmsecompetitor)/sqrt(horizon)
+
+leftboundn = mean(rmse4) - 2.58*sd(rmse4)/sqrt(horizon)
+rightboundn = mean(rmse4) + 2.58*sd(rmse4)/sqrt(horizon)
+```
+
+# Conclusion
+
+## After running tests on both models, I found that the nonparametric model was on average $`r format(round(leftboundn, digits=2), scientific=FALSE)` to $`r format(round(rightboundn, digits=2), scientific=FALSE)` off while the linear model was $`r format(round(leftboundl, digits=2), scientific=FALSE)` to $`r format(round(rightboundl, digits=2), scientific=FALSE)` off. This shows that the best model that I created is still the linear model. While this is an improvement from the base model when I started this anlaysis, there is further room for improvement. If you wish to increase the accuracy of your tax estimations and keep your constituents happy, I strongly suggest collecting more data such as a neighborhood variable because collecting new data generally is the best way to improve model preformance.
+
+
+
